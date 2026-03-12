@@ -1,0 +1,20 @@
+# Node
+**/node_modules/
+**/.next/
+**/dist/
+**/out/
+**/coverage/
+*.log
+
+# Rust
+**/target/
+contracts/test_snapshots/
+
+# Env files
+.env
+.env.local
+.env.*
+!.env.example
+
+# Misc
+.DS_Store

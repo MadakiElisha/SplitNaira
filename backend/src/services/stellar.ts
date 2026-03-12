@@ -1,0 +1,26 @@
+﻿export interface StellarConfig {
+  horizonUrl: string;
+  sorobanRpcUrl: string;
+  networkPassphrase: string;
+  contractId: string;
+}
+
+export function loadStellarConfig(): StellarConfig {
+  const {
+    HORIZON_URL,
+    SOROBAN_RPC_URL,
+    SOROBAN_NETWORK_PASSPHRASE,
+    CONTRACT_ID
+  } = process.env;
+
+  if (!HORIZON_URL || !SOROBAN_RPC_URL || !SOROBAN_NETWORK_PASSPHRASE || !CONTRACT_ID) {
+    throw new Error("Missing Stellar configuration env vars.");
+  }
+
+  return {
+    horizonUrl: HORIZON_URL,
+    sorobanRpcUrl: SOROBAN_RPC_URL,
+    networkPassphrase: SOROBAN_NETWORK_PASSPHRASE,
+    contractId: CONTRACT_ID
+  };
+}

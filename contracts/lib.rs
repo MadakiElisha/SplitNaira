@@ -2,12 +2,13 @@
 
 use soroban_sdk::{
     contract, contractimpl, contracttype,
-    token, Address, Env, Map, String, Symbol, Vec,
-    panic_with_error,
+    token, Address, Env, String, Symbol, Vec,
 };
 
 mod errors;
 mod events;
+#[cfg(test)]
+mod tests;
 
 use errors::SplitError;
 use events::SplitEvents;
@@ -83,6 +84,7 @@ impl SplitNairaContract {
     ///
     /// # Arguments
     /// * `env`           - Soroban environment
+    /// * `owner`         - Project owner / admin address
     /// * `project_id`    - Unique Symbol identifier for the project
     /// * `title`         - Human-readable project title
     /// * `project_type`  - Category string ("music", "film", etc.)
@@ -95,14 +97,14 @@ impl SplitNairaContract {
     /// * `SplitError::ProjectExists`     - if project_id already exists
     pub fn create_project(
         env: Env,
+        owner: Address,
         project_id: Symbol,
         title: String,
         project_type: String,
         token: Address,
         collaborators: Vec<Collaborator>,
     ) -> Result<(), SplitError> {
-        // Only the transaction invoker can create a project
-        let owner = env.invoker();
+        owner.require_auth();
 
         // Guard: project must not already exist
         if env.storage().persistent().has(&DataKey::Project(project_id.clone())) {
@@ -168,13 +170,14 @@ impl SplitNairaContract {
     pub fn lock_project(
         env: Env,
         project_id: Symbol,
+        owner: Address,
     ) -> Result<(), SplitError> {
-        let caller = env.invoker();
         let mut project = Self::get_project_or_err(&env, &project_id)?;
 
-        if project.owner != caller {
+        if project.owner != owner {
             return Err(SplitError::Unauthorized);
         }
+        owner.require_auth();
 
         if project.locked {
             return Err(SplitError::AlreadyLocked);

@@ -2,8 +2,8 @@
 
 use super::*;
 use soroban_sdk::{
-    testutils::{Address as _, AuthorizedFunction, AuthorizedInvocation},
-    token, Address, Env, IntoVal, String, Symbol, Vec,
+    testutils::Address as _,
+    token, Address, Env, String, Symbol, Vec,
 };
 
 // ============================================================
@@ -43,6 +43,7 @@ fn test_create_project_success() {
     let contract_id = env.register_contract(None, SplitNairaContract);
     let client = SplitNairaContractClient::new(&env, &contract_id);
 
+    let owner = Address::generate(&env);
     let alice = Address::generate(&env);
     let bob = Address::generate(&env);
 
@@ -52,15 +53,14 @@ fn test_create_project_success() {
         Vec::from_slice(&env, &[6000u32, 4000u32]), // 60% / 40%
     );
 
-    let result = client.create_project(
+    client.create_project(
+        &owner,
         &Symbol::new(&env, "afrobeats_vol3"),
         &String::from_str(&env, "Afrobeats Vol. 3"),
         &String::from_str(&env, "music"),
         &token,
         &collabs,
     );
-
-    assert!(result.is_ok());
     assert_eq!(client.get_project_count(), 1);
 
     let project = client.get_project(&Symbol::new(&env, "afrobeats_vol3")).unwrap();
@@ -75,6 +75,7 @@ fn test_create_project_fails_invalid_split() {
     let contract_id = env.register_contract(None, SplitNairaContract);
     let client = SplitNairaContractClient::new(&env, &contract_id);
 
+    let owner = Address::generate(&env);
     let alice = Address::generate(&env);
     let bob = Address::generate(&env);
 
@@ -86,6 +87,7 @@ fn test_create_project_fails_invalid_split() {
     );
 
     let result = client.try_create_project(
+        &owner,
         &Symbol::new(&env, "bad_split"),
         &String::from_str(&env, "Bad Split Project"),
         &String::from_str(&env, "music"),
@@ -102,6 +104,7 @@ fn test_create_project_fails_too_few_collaborators() {
     let contract_id = env.register_contract(None, SplitNairaContract);
     let client = SplitNairaContractClient::new(&env, &contract_id);
 
+    let owner = Address::generate(&env);
     let alice = Address::generate(&env);
 
     // Only 1 collaborator — minimum is 2
@@ -112,6 +115,7 @@ fn test_create_project_fails_too_few_collaborators() {
     );
 
     let result = client.try_create_project(
+        &owner,
         &Symbol::new(&env, "solo"),
         &String::from_str(&env, "Solo Project"),
         &String::from_str(&env, "art"),
@@ -128,6 +132,7 @@ fn test_create_project_fails_duplicate_id() {
     let contract_id = env.register_contract(None, SplitNairaContract);
     let client = SplitNairaContractClient::new(&env, &contract_id);
 
+    let owner = Address::generate(&env);
     let alice = Address::generate(&env);
     let bob = Address::generate(&env);
     let collabs = make_collaborators(
@@ -138,15 +143,17 @@ fn test_create_project_fails_duplicate_id() {
 
     // First creation — should succeed
     client.create_project(
+        &owner,
         &Symbol::new(&env, "dup_test"),
         &String::from_str(&env, "Duplicate Test"),
         &String::from_str(&env, "film"),
         &token,
         &collabs.clone(),
-    ).unwrap();
+    );
 
     // Second creation with same ID — should fail
     let result = client.try_create_project(
+        &owner,
         &Symbol::new(&env, "dup_test"),
         &String::from_str(&env, "Duplicate Test"),
         &String::from_str(&env, "film"),
@@ -167,6 +174,7 @@ fn test_lock_project_success() {
     let contract_id = env.register_contract(None, SplitNairaContract);
     let client = SplitNairaContractClient::new(&env, &contract_id);
 
+    let owner = Address::generate(&env);
     let alice = Address::generate(&env);
     let bob = Address::generate(&env);
     let collabs = make_collaborators(
@@ -176,14 +184,15 @@ fn test_lock_project_success() {
     );
 
     client.create_project(
+        &owner,
         &Symbol::new(&env, "nollywood_film"),
         &String::from_str(&env, "Nollywood Feature Film"),
         &String::from_str(&env, "film"),
         &token,
         &collabs,
-    ).unwrap();
+    );
 
-    client.lock_project(&Symbol::new(&env, "nollywood_film")).unwrap();
+    client.lock_project(&Symbol::new(&env, "nollywood_film"), &owner);
 
     let project = client.get_project(&Symbol::new(&env, "nollywood_film")).unwrap();
     assert_eq!(project.locked, true);
@@ -195,10 +204,11 @@ fn test_lock_project_success() {
 
 #[test]
 fn test_distribute_splits_correctly() {
-    let (env, token_admin, token) = create_test_env();
+    let (env, _token_admin, token) = create_test_env();
     let contract_id = env.register_contract(None, SplitNairaContract);
     let client = SplitNairaContractClient::new(&env, &contract_id);
 
+    let owner = Address::generate(&env);
     let alice = Address::generate(&env);
     let bob = Address::generate(&env);
     let carol = Address::generate(&env);
@@ -211,19 +221,20 @@ fn test_distribute_splits_correctly() {
     );
 
     client.create_project(
+        &owner,
         &Symbol::new(&env, "podcast_ep1"),
         &String::from_str(&env, "Podcast Episode 1"),
         &String::from_str(&env, "podcast"),
         &token,
         &collabs,
-    ).unwrap();
+    );
 
     // Fund the contract with 1000 tokens (in stroops = 1000 * 10^7)
     let token_client = token::StellarAssetClient::new(&env, &token);
     token_client.mint(&contract_id, &1_000_0000000i128);
 
     // Distribute
-    client.distribute(&Symbol::new(&env, "podcast_ep1")).unwrap();
+    client.distribute(&Symbol::new(&env, "podcast_ep1"));
 
     // Check balances: 50%, 30%, 20% of 1000 tokens
     let token_balance = token::Client::new(&env, &token);
@@ -245,6 +256,7 @@ fn test_distribute_fails_no_balance() {
     let contract_id = env.register_contract(None, SplitNairaContract);
     let client = SplitNairaContractClient::new(&env, &contract_id);
 
+    let owner = Address::generate(&env);
     let alice = Address::generate(&env);
     let bob = Address::generate(&env);
     let collabs = make_collaborators(
@@ -254,12 +266,13 @@ fn test_distribute_fails_no_balance() {
     );
 
     client.create_project(
+        &owner,
         &Symbol::new(&env, "empty_project"),
         &String::from_str(&env, "Empty Project"),
         &String::from_str(&env, "art"),
         &token,
         &collabs,
-    ).unwrap();
+    );
 
     // No tokens deposited — distribute should fail
     let result = client.try_distribute(&Symbol::new(&env, "empty_project"));
