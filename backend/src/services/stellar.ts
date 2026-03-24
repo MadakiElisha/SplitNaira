@@ -1,8 +1,15 @@
-﻿export interface StellarConfig {
+export interface StellarConfig {
   horizonUrl: string;
   sorobanRpcUrl: string;
   networkPassphrase: string;
   contractId: string;
+}
+
+export class RequestValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "RequestValidationError";
+  }
 }
 
 export function loadStellarConfig(): StellarConfig {
