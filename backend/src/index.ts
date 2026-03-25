@@ -1,4 +1,4 @@
-﻿import express from "express";
+import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
@@ -14,7 +14,7 @@ const app = express();
 
 const corsOrigins = process.env.CORS_ORIGIN
   ? process.env.CORS_ORIGIN.split(",").map((origin) => origin.trim())
-  : ["*"];
+  : "*";
 
 app.use(helmet());
 app.use(cors({ origin: corsOrigins }));

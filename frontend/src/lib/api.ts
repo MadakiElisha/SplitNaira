@@ -73,3 +73,11 @@ export async function getSplit(projectId: string): Promise<SplitProject> {
   }
   return body as SplitProject;
 }
+
+export async function getProjectHistory(projectId: string): Promise<any[]> {
+  const response = await fetch(`${API_BASE_URL}/splits/${encodeURIComponent(projectId)}/history`);
+  if (!response.ok) {
+    throw new Error("Failed to fetch project history");
+  }
+  return response.json();
+}

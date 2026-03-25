@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { rpc, Transaction, StrKey } from "@stellar/stellar-sdk";
 import { clsx } from "clsx";
 
-import { buildCreateSplitXdr, buildDistributeXdr, getSplit } from "@/lib/api";
+import { buildCreateSplitXdr, buildDistributeXdr, getProjectHistory, getSplit } from "@/lib/api";
 import { connectFreighter, getFreighterWalletState, signWithFreighter, type WalletState } from "@/lib/freighter";
 import { type SplitProject } from "@/lib/stellar";
 import { useToast } from "./toast-provider";
@@ -42,6 +42,8 @@ export function SplitApp() {
   const [fetchedProject, setFetchedProject] = useState<SplitProject | null>(null);
   const [isFetchingProject, setIsFetchingProject] = useState(false);
   const [showDistributeModal, setShowDistributeModal] = useState(false);
+  const [history, setHistory] = useState<any[]>([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
 
   const totalBasisPoints = useMemo(
     () =>
@@ -192,12 +194,25 @@ export function SplitApp() {
     }
   }
 
+  async function fetchHistory(id: string) {
+    setIsLoadingHistory(true);
+    try {
+      const data = await getProjectHistory(id);
+      setHistory(data);
+    } catch (error) {
+      console.error("Failed to fetch history:", error);
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  }
+
   const onFetchProject = async () => {
     if (!searchProjectId.trim()) return;
     setIsFetchingProject(true);
     try {
       const project = await getSplit(searchProjectId.trim());
       setFetchedProject(project);
+      await fetchHistory(searchProjectId.trim());
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to fetch project.";
       showToast(message, "error");
@@ -401,7 +416,7 @@ export function SplitApp() {
 
               <div className="space-y-4">
                 {collaborators.map((collaborator, index) => (
-                  <div key={collaborator.id} className="group relative grid gap-6 rounded-3xl border border-white/5 bg-white/[0.02] p-6 transition-all hover:bg-white/[0.04] md:grid-cols-12 md:items-start">
+                  <div key={collaborator.id} className="group relative grid gap-6 rounded-3xl border border-white/5 bg-white/2 p-6 transition-all hover:bg-white/4 md:grid-cols-12 md:items-start">
                     <div className="md:col-span-5 space-y-2">
                       <label htmlFor={`address-${collaborator.id}`} className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted/60 px-1">Wallet Address</label>
                       <input
@@ -448,7 +463,7 @@ export function SplitApp() {
                       <button
                         type="button"
                         onClick={() => removeCollaborator(collaborator.id)}
-                        className="flex h-10 w-10 min-w-[2.5rem] items-center justify-center rounded-xl bg-red-500/10 text-red-400 opacity-0 transition-opacity hover:bg-red-500/20 group-hover:opacity-100"
+                        className="flex h-10 w-10 min-w-10 items-center justify-center rounded-xl bg-red-500/10 text-red-400 opacity-0 transition-opacity hover:bg-red-500/20 group-hover:opacity-100"
                       >
                         <svg className="h-5 w-5 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
@@ -459,7 +474,7 @@ export function SplitApp() {
                 ))}
               </div>
 
-              <div className="flex flex-col items-end gap-3 px-4 py-6 rounded-3xl bg-white/[0.02] border border-white/5">
+              <div className="flex flex-col items-end gap-3 px-4 py-6 rounded-3xl bg-white/2 border border-white/5">
                 <div className="flex items-center gap-4">
                   <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted">Allocation Matrix</span>
                   <div className={clsx(
@@ -479,7 +494,7 @@ export function SplitApp() {
               <button
                 type="submit"
                 disabled={isSubmitting || !isValid}
-                className="premium-button w-full rounded-[2rem] bg-greenMid py-5 text-sm font-extrabold uppercase tracking-[0.25em] text-white shadow-2xl shadow-greenMid/20 disabled:cursor-not-allowed disabled:opacity-20"
+                className="premium-button w-full rounded-4xl bg-greenMid py-5 text-sm font-extrabold uppercase tracking-[0.25em] text-white shadow-2xl shadow-greenMid/20 disabled:cursor-not-allowed disabled:opacity-20"
               >
                 {isSubmitting ? (
                   <div className="flex items-center justify-center gap-3">
@@ -557,7 +572,7 @@ export function SplitApp() {
                     <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-muted border-l-2 border-greenBright pl-4">Distribution Rules</h3>
                     <div className="space-y-3">
                       {fetchedProject.collaborators.map((collab, idx) => (
-                        <div key={idx} className="flex justify-between items-center rounded-2xl bg-white/5 p-4 text-sm border border-white/5">
+                        <div key={idx} className="flex justify-between items-center rounded-2xl bg-white/2 p-4 text-sm border border-white/5 hover:bg-white/4 transition-colors">
                           <div className="space-y-0.5">
                             <p className="font-bold">{collab.alias}</p>
                             <p className="font-mono text-[10px] text-muted opacity-60 truncate max-w-[150px]">{collab.address}</p>
@@ -566,21 +581,84 @@ export function SplitApp() {
                         </div>
                       ))}
                     </div>
+
+                    <div className="pt-6 border-t border-white/5">
+                      <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-muted mb-6">Internal Ledgers</h3>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="rounded-2xl border border-white/5 bg-white/2 p-4 space-y-1">
+                          <p className="text-[10px] font-bold uppercase tracking-widest text-muted">Rounds</p>
+                          <p className="text-xl font-display">{fetchedProject.distributionRound}</p>
+                        </div>
+                        <div className="rounded-2xl border border-white/5 bg-white/2 p-4 space-y-1 text-right">
+                          <p className="text-[10px] font-bold uppercase tracking-widest text-muted">Total Paid</p>
+                          <p className="text-xl font-display">{Number(fetchedProject.totalDistributed).toLocaleString()}</p>
+                        </div>
+                      </div>
+                    </div>
                   </div>
 
                   <div className="space-y-6">
-                    <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-muted border-l-2 border-greenBright pl-4">Project History</h3>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-6 space-y-1">
-                        <p className="text-[10px] font-bold uppercase tracking-widest text-muted">Rounds</p>
-                        <p className="text-2xl font-display">{fetchedProject.distributionRound}</p>
-                      </div>
-                      <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-6 space-y-1 text-right">
-                        <p className="text-[10px] font-bold uppercase tracking-widest text-muted">Total Paid</p>
-                        <p className="text-2xl font-display">{Number(fetchedProject.totalDistributed).toLocaleString()}</p>
-                      </div>
+                    <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-muted border-l-2 border-greenBright pl-4">Transparency History</h3>
+                    <div className="relative space-y-4 before:absolute before:left-[19px] before:top-2 before:h-[calc(100%-16px)] before:w-px before:bg-white/10 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
+                      {isLoadingHistory ? (
+                        <div className="flex items-center gap-3 pl-10 text-[10px] font-bold uppercase tracking-widest text-muted">
+                          <svg className="h-3 w-3 animate-spin" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                          </svg>
+                          Syncing on-chain events...
+                        </div>
+                      ) : history.length > 0 ? (
+                        history.map((item) => (
+                          <div key={item.id} className="relative pl-10 group">
+                            <div className={clsx(
+                              "absolute left-0 top-1 flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-[#0a0a09] transition-all group-hover:border-greenBright/30",
+                              item.type === "round" ? "text-greenBright" : "text-ink/60"
+                            )}>
+                              {item.type === "round" ? (
+                                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                                </svg>
+                              ) : (
+                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                                </svg>
+                              )}
+                            </div>
+                            <div className="flex flex-col gap-0.5">
+                              <div className="flex items-center justify-between">
+                                <p className="text-xs font-bold text-ink">
+                                  {item.type === "round" ? `Distribution Round #${item.round}` : "Recipient Payout"}
+                                </p>
+                                <span className="text-[10px] font-mono text-muted tabular-nums opacity-60">
+                                  {new Date(item.ledgerCloseTime * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                              </div>
+                              <p className="text-[10px] font-medium text-muted uppercase tracking-tighter">
+                                {item.type === "round" ? (
+                                  <>Total: <span className="text-ink">{Number(item.amount).toLocaleString()}</span> Stroops</>
+                                ) : (
+                                  <>To: <span className="text-ink font-mono">{item.recipient.slice(0, 8)}...</span> Amount: <span className="text-ink">{Number(item.amount).toLocaleString()}</span></>
+                                )}
+                              </p>
+                              <a 
+                                href={`https://stellar.expert/explorer/testnet/tx/${item.txHash}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-[9px] font-bold text-greenBright/40 hover:text-greenBright transition-colors uppercase tracking-widest mt-1"
+                              >
+                                Verify Transaction →
+                              </a>
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="pl-10 text-[10px] font-bold uppercase tracking-widest text-muted opacity-40 italic">
+                          No verified history found for this project
+                        </div>
+                      )}
                     </div>
-                    
+
                     <button
                       onClick={() => setShowDistributeModal(true)}
                       disabled={Number(fetchedProject.balance) <= 0 || !wallet.connected}

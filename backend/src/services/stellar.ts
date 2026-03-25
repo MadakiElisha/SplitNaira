@@ -20,7 +20,9 @@ export function loadStellarConfig(): StellarConfig {
     CONTRACT_ID
   } = process.env;
 
+  console.log("Current ENV keys:", Object.keys(process.env));
   if (!HORIZON_URL || !SOROBAN_RPC_URL || !SOROBAN_NETWORK_PASSPHRASE || !CONTRACT_ID) {
+    console.error("Missing ENV vars:", { HORIZON_URL, SOROBAN_RPC_URL, SOROBAN_NETWORK_PASSPHRASE, CONTRACT_ID });
     throw new Error("Missing Stellar configuration env vars.");
   }
 
