@@ -66,6 +66,7 @@ export function SplitApp() {
   );
 
   const [activeTab, setActiveTab] = useState<"create" | "manage" | "projects">("create");
+  const [createStep, setCreateStep] = useState(1); // 1: Project, 2: Collaborators, 3: Review, 4: Submit
   const [searchProjectId, setSearchProjectId] = useState("");
   const [fetchedProject, setFetchedProject] = useState<SplitProject | null>(
     null,
@@ -137,6 +138,22 @@ export function SplitApp() {
     [totalBasisPoints, validationErrors],
   );
 
+  // Step validation
+  const isStep1Valid = useMemo(
+    () =>
+      projectId.trim() &&
+      title.trim() &&
+      token.trim() &&
+      projectType.trim() &&
+      (StrKey.isValidEd25519PublicKey(token) || StrKey.isValidContract(token)),
+    [projectId, title, token, projectType]
+  );
+
+  const isStep2Valid = useMemo(
+    () => totalBasisPoints === 10_000 && Object.keys(validationErrors).length === 0 && collaborators.length >= 2,
+    [totalBasisPoints, validationErrors, collaborators.length]
+  );
+
   useEffect(() => {
     void getFreighterWalletState()
       .then(setWallet)
@@ -175,6 +192,33 @@ export function SplitApp() {
   function onDisconnectWallet() {
     setWallet({ connected: false, address: null, network: null });
     showToast("Wallet disconnected.", "info");
+  }
+
+  function onWizardNext() {
+    if (createStep === 1 && isStep1Valid) {
+      setCreateStep(2);
+    } else if (createStep === 2 && isStep2Valid) {
+      setCreateStep(3);
+    } else if (createStep === 3) {
+      setCreateStep(4);
+    }
+  }
+
+  function onWizardBack() {
+    if (createStep > 1) {
+      setCreateStep(createStep - 1);
+    }
+  }
+
+  function onWizardReset() {
+    setCreateStep(1);
+    setProjectId("");
+    setTitle("");
+    setProjectType("music");
+    setToken("");
+    setCollaborators(getInitialCollaborators());
+    setTxHash(null);
+    setCreatedProject(null);
   }
 
   function updateCollaborator(id: string, patch: Partial<CollaboratorInput>) {
@@ -251,8 +295,11 @@ export function SplitApp() {
       try {
         const projectDetails = await getSplit(projectId.trim());
         setCreatedProject(projectDetails);
+        // Advance to success step
+        setCreateStep(4);
       } catch (error) {
         console.error("Failed to fetch created project details:", error);
+        setCreateStep(4);
       }
     } catch (error) {
       const message =
