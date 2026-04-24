@@ -21,13 +21,14 @@ vi.mock("../services/stellar.js", () => {
       horizonUrl: "http://horizon",
       sorobanRpcUrl: "http://rpc",
       networkPassphrase: "test",
-      contractId: "test_contract",
+      contractId: "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4",
       simulatorAccount: "test_account"
     }),
     getStellarRpcServer: () => ({
       getEvents: mockGetEvents,
       getAccount: mockGetAccount
     }),
+    executeWithRetry: async <T>(operation: () => Promise<T>) => operation(),
     RequestValidationError
   };
 });
@@ -51,7 +52,7 @@ describe("Split History Precise Filtering", () => {
     expect(mockGetEvents).toHaveBeenCalledWith(expect.objectContaining({
       filters: [{
         type: "contract",
-        contractIds: ["test_contract"],
+        contractIds: ["CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4"],
         topics: [[roundTopic], [topicProjectId]]
       }]
     }));
@@ -60,7 +61,7 @@ describe("Split History Precise Filtering", () => {
     expect(mockGetEvents).toHaveBeenCalledWith(expect.objectContaining({
       filters: [{
         type: "contract",
-        contractIds: ["test_contract"],
+        contractIds: ["CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4"],
         topics: [[paymentTopic], [topicProjectId]]
       }]
     }));

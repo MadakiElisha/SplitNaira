@@ -217,6 +217,43 @@ describe("splits routes integration", () => {
     expect(getAccountMock).toHaveBeenCalledWith("GTESTSIMULATOR");
   });
 
+  it("reads admin allowlist state", async () => {
+    getAccountMock.mockResolvedValue({ accountId: "GSIM" });
+    simulateTransactionMock
+      .mockResolvedValueOnce({
+        result: {
+          retval: "GADMIN"
+        }
+      })
+      .mockResolvedValueOnce({
+        result: {
+          retval: 2
+        }
+      })
+      .mockResolvedValueOnce({
+        result: {
+          retval: ["GTOKEN_1", "GTOKEN_2"]
+        }
+      });
+
+    const app = createApp();
+
+    const response = await request(app)
+      .get("/splits/admin/allowlist?start=0&limit=25")
+      .expect(200);
+
+    expect(response.body).toEqual({
+      admin: "GADMIN",
+      allowedTokenCount: 2,
+      tokens: ["GTOKEN_1", "GTOKEN_2"],
+      start: 0,
+      limit: 25
+    });
+
+    expect(getAccountMock).toHaveBeenCalledWith("GTESTSIMULATOR");
+    expect(simulateTransactionMock).toHaveBeenCalledTimes(3);
+  });
+
   it("builds allow_token transaction", async () => {
     getAccountMock.mockResolvedValue({ accountId: "GADMIN" });
     prepareTransactionMock.mockResolvedValue({

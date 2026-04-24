@@ -141,6 +141,16 @@ export const updateCollaboratorsSchema = z
     }
   });
 
+const adminTokenActionSchema = z.object({
+  admin: stellarAddressSchema.describe("admin"),
+  token: stellarAddressSchema.describe("token")
+});
+
+const allowlistQuerySchema = z.object({
+  start: z.coerce.number().int().min(0).default(0),
+  limit: z.coerce.number().int().min(1).max(200).default(100)
+});
+
 export function toCollaboratorScVal(collaborator: z.infer<typeof collaboratorSchema>) {
   return xdr.ScVal.scvMap([
     new xdr.ScMapEntry({
@@ -296,9 +306,84 @@ async function buildCreateProjectUnsignedXdr(
   };
 }
 
+type AdminTokenActionRequest = z.infer<typeof adminTokenActionSchema>;
+
+async function buildAdminTokenActionUnsignedXdr(
+  input: AdminTokenActionRequest,
+  operation: "allow_token" | "disallow_token"
+) {
+  const config = loadStellarConfig();
+  const server = getStellarRpcServer();
+
+  let sourceAccount;
+  try {
+    sourceAccount = await server.getAccount(input.admin);
+  } catch {
+    throw new RequestValidationError("admin account not found on selected network");
+  }
+
+  let adminAddress: Address;
+  let tokenAddress: Address;
+  try {
+    adminAddress = Address.fromString(input.admin);
+    tokenAddress = Address.fromString(input.token);
+  } catch {
+    throw new RequestValidationError("admin and token must be valid Stellar addresses");
+  }
+
+  const contract = new Contract(config.contractId);
+  const tx = new TransactionBuilder(sourceAccount, {
+    fee: BASE_FEE,
+    networkPassphrase: config.networkPassphrase
+  })
+    .addOperation(contract.call(operation, adminAddress.toScVal(), tokenAddress.toScVal()))
+    .setTimeout(300)
+    .build();
+
+  const preparedTx = await server.prepareTransaction(tx);
+  return {
+    xdr: preparedTx.toXDR(),
+    metadata: {
+      contractId: config.contractId,
+      networkPassphrase: config.networkPassphrase,
+      sourceAccount: input.admin,
+      sequenceNumber: preparedTx.sequence,
+      fee: preparedTx.fee,
+      operation
+    }
+  };
+}
+
+async function simulateReadOnlyContractCall(
+  method: string,
+  args: xdr.ScVal[] = []
+) {
+  const config = loadStellarConfig();
+  const server = getStellarRpcServer();
+
+  let sourceAccount;
+  try {
+    sourceAccount = await server.getAccount(config.simulatorAccount);
+  } catch {
+    throw new RequestValidationError("simulator account not found on selected network");
+  }
+
+  const contract = new Contract(config.contractId);
+  const tx = new TransactionBuilder(sourceAccount, {
+    fee: BASE_FEE,
+    networkPassphrase: config.networkPassphrase
+  })
+    .addOperation(contract.call(method, ...args))
+    .setTimeout(300)
+    .build();
+
+  const simulated = await server.simulateTransaction(tx);
+  return "result" in simulated ? simulated.result?.retval : undefined;
+}
+
 async function listProjects(start: number, limit: number) {
   const config = loadStellarConfig();
-  const server = new rpc.Server(config.sorobanRpcUrl, { allowHttp: true });
+  const server = getStellarRpcServer();
 
   let sourceAccount;
   try {
@@ -329,7 +414,7 @@ async function listProjects(start: number, limit: number) {
 
 async function fetchProjectById(projectId: string) {
   const config = loadStellarConfig();
-  const server = new rpc.Server(config.sorobanRpcUrl, { allowHttp: true });
+  const server = getStellarRpcServer();
 
   let sourceAccount;
   try {
@@ -599,15 +684,16 @@ splitsRouter.get("/", async (req: Request, res: Response, next: NextFunction) =>
 splitsRouter.get("/:projectId", async (req: Request, res: Response, next: NextFunction) => {
   try {
     const requestId = res.locals.requestId;
-    const projectIdRaw = req.params.projectId;
-    const projectId = typeof projectIdRaw === "string" ? projectIdRaw.trim() : "";
-    if (!projectId) {
+    const parsedProjectId = projectIdParamSchema.safeParse(req.params.projectId);
+    if (!parsedProjectId.success) {
       return res.status(400).json({
         error: "validation_error",
-        message: "projectId is required",
+        message: "Invalid request payload.",
+        details: parsedProjectId.error.flatten(),
         requestId
       });
     }
+    const projectId = parsedProjectId.data;
 
     const project = await fetchProjectById(projectId);
     if (!project) {
@@ -619,6 +705,119 @@ splitsRouter.get("/:projectId", async (req: Request, res: Response, next: NextFu
     }
 
     return res.status(200).json(project);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+splitsRouter.get("/admin/allowlist", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const requestId = res.locals.requestId;
+    const parsed = allowlistQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      return res.status(400).json({
+        error: "validation_error",
+        message: "Invalid query parameters.",
+        details: parsed.error.flatten(),
+        requestId
+      });
+    }
+
+    const { start, limit } = parsed.data;
+
+    try {
+      const [adminRetval, countRetval, tokensRetval] = await Promise.all([
+        simulateReadOnlyContractCall("get_admin"),
+        simulateReadOnlyContractCall("get_allowed_token_count"),
+        simulateReadOnlyContractCall("get_allowed_tokens", [
+          xdr.ScVal.scvU32(start),
+          xdr.ScVal.scvU32(limit)
+        ])
+      ]);
+
+      const adminValue = adminRetval ? scValToNative(adminRetval) : null;
+      const countValue = countRetval ? scValToNative(countRetval) : 0;
+      const tokensValue = tokensRetval ? scValToNative(tokensRetval) : [];
+
+      return res.status(200).json({
+        admin: typeof adminValue === "string" ? adminValue : null,
+        allowedTokenCount: Number(countValue ?? 0),
+        tokens: Array.isArray(tokensValue) ? tokensValue.map(String) : [],
+        start,
+        limit
+      });
+    } catch (error) {
+      if (error instanceof RequestValidationError) {
+        return res.status(400).json({
+          error: "validation_error",
+          message: error.message,
+          requestId
+        });
+      }
+      throw error;
+    }
+  } catch (error) {
+    return next(error);
+  }
+});
+
+splitsRouter.post("/admin/allow-token", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const requestId = res.locals.requestId;
+    const parsed = adminTokenActionSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({
+        error: "validation_error",
+        message: "Invalid request payload.",
+        details: parsed.error.flatten(),
+        requestId
+      });
+    }
+
+    try {
+      const result = await buildAdminTokenActionUnsignedXdr(parsed.data, "allow_token");
+      return res.status(200).json(result);
+    } catch (error) {
+      if (error instanceof RequestValidationError) {
+        return res.status(400).json({
+          error: "validation_error",
+          message: error.message,
+          requestId
+        });
+      }
+      throw error;
+    }
+  } catch (error) {
+    return next(error);
+  }
+});
+
+splitsRouter.post("/admin/disallow-token", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const requestId = res.locals.requestId;
+    const parsed = adminTokenActionSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({
+        error: "validation_error",
+        message: "Invalid request payload.",
+        details: parsed.error.flatten(),
+        requestId
+      });
+    }
+
+    try {
+      const result = await buildAdminTokenActionUnsignedXdr(parsed.data, "disallow_token");
+      return res.status(200).json(result);
+    } catch (error) {
+      if (error instanceof RequestValidationError) {
+        return res.status(400).json({
+          error: "validation_error",
+          message: error.message,
+          requestId
+        });
+      }
+      throw error;
+    }
   } catch (error) {
     return next(error);
   }
@@ -892,16 +1091,29 @@ splitsRouter.get("/:projectId/claimable/:address", async (req: Request, res: Res
   try {
     const requestId = res.locals.requestId;
     const { projectId: projectIdRaw, address: addressRaw } = req.params;
-    const projectId = typeof projectIdRaw === "string" ? projectIdRaw.trim() : "";
-    const address = typeof addressRaw === "string" ? addressRaw.trim() : "";
+    const parsedProjectId = projectIdParamSchema.safeParse(
+      typeof projectIdRaw === "string" ? projectIdRaw.trim() : projectIdRaw
+    );
+    const parsedAddress = stellarAddressSchema.safeParse(
+      typeof addressRaw === "string" ? addressRaw.trim() : addressRaw
+    );
 
-    if (!projectId || !address) {
+    if (!parsedProjectId.success || !parsedAddress.success) {
       return res.status(400).json({
         error: "validation_error",
-        message: "projectId and address are required",
+        message: "Invalid request payload.",
+        details: {
+          params: {
+            projectId: parsedProjectId.success ? null : parsedProjectId.error.flatten(),
+            address: parsedAddress.success ? null : parsedAddress.error.flatten()
+          }
+        },
         requestId
       });
     }
+
+    const projectId = parsedProjectId.data;
+    const address = parsedAddress.data;
 
     const config = loadStellarConfig();
     const server = new rpc.Server(config.sorobanRpcUrl, { allowHttp: true });
@@ -1236,6 +1448,13 @@ export const historyQuerySchema = z.object({
   cursor: z.string().default(""),
   limit: z.coerce.number().int().min(1).max(200).default(100)
 });
+
+function toEventTopic(value: string) {
+  const scVal = nativeToScVal(value, { type: "symbol" });
+  return typeof scVal === "object" && scVal !== null && "toXDR" in scVal
+    ? scVal.toXDR("base64")
+    : scVal;
+}
 
 splitsRouter.get("/:projectId/history", async (req: Request, res: Response, next: NextFunction) => {
   try {

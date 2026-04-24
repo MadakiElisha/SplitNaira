@@ -14,11 +14,15 @@ vi.mock("../services/stellar.js", () => {
       horizonUrl: "http://horizon",
       sorobanRpcUrl: "http://rpc",
       networkPassphrase: "test",
-      contractId: "test_contract",
+      contractId: "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4",
       simulatorAccount: "test_account"
     })),
     getStellarRpcServer: vi.fn(() => ({
-      getAccount: vi.fn().mockResolvedValue({}),
+      getAccount: vi.fn().mockResolvedValue({
+        accountId: () => "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
+        sequenceNumber: () => "1",
+        incrementSequenceNumber: vi.fn()
+      }),
       simulateTransaction: vi.fn().mockResolvedValue({ result: { retval: null } }),
       prepareTransaction: vi.fn().mockResolvedValue({
         toXDR: () => "test_xdr",
