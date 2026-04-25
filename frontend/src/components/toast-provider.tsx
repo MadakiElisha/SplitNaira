@@ -38,10 +38,10 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
             key={toast.id}
             className={`rounded-xl border px-4 py-3 text-sm shadow-soft ${
               toast.variant === "success"
-                ? "border-green-600/30 bg-green-100 text-green-900"
+                ? "border-emerald-500/30 bg-emerald-500/15 text-emerald-900 dark:text-emerald-100"
                 : toast.variant === "error"
-                  ? "border-red-600/30 bg-red-100 text-red-900"
-                  : "border-black/15 bg-white text-black/80"
+                  ? "border-rose-500/30 bg-rose-500/15 text-rose-900 dark:text-rose-100"
+                  : "border-[color:var(--border)] bg-[color:var(--surface)] text-[color:var(--ink)]"
             }`}
           >
             {toast.message}
